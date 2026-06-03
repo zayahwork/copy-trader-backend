@@ -170,8 +170,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Test endpoint - simulate a new Ferrari trade
-app.post('/api/test-trade', async (req, res) => {
+// Test endpoint - simulate a new Ferrari trade (GET for easy browser testing)
+app.get('/api/test-trade', async (req, res) => {
   try {
     const testPosition = {
       conditionId: '0xTEST' + Date.now(),
