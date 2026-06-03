@@ -130,9 +130,10 @@ app.post('/api/poll', async (req, res) => {
     const newPositions = await updatePositions();
     const currentPositions = await getPositions();
     
-    // Process new positions
-    for (const position of newPositions) {
-      await processNewPosition(position);
+    // Process new positions (max 5 per poll)
+    const maxToProcess = Math.min(newPositions.length, 5);
+    for (let i = 0; i < maxToProcess; i++) {
+      await processNewPosition(newPositions[i]);
     }
     
     // Check for positions that need to be closed
@@ -161,9 +162,13 @@ cron.schedule('*/5 * * * * *', async () => {
     const newPositions = await updatePositions();
     const currentPositions = await getPositions();
     
-    // Process new positions
-    for (const position of newPositions) {
-      await processNewPosition(position);
+    // Process new positions (max 5 per poll to prevent spam)
+    const maxToProcess = Math.min(newPositions.length, 5);
+    if (newPositions.length > 0) {
+      await addActivityLog(`Processing ${maxToProcess} of ${newPositions.length} new positions`, 'info');
+    }
+    for (let i = 0; i < maxToProcess; i++) {
+      await processNewPosition(newPositions[i]);
     }
     
     // Check for positions that need to be closed

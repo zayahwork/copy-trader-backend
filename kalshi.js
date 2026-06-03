@@ -1,9 +1,11 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
 const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
 const KALSHI_API_KEY_SECRET = process.env.KALSHI_API_KEY_SECRET;
+const DEMO_MODE = process.env.DEMO_MODE === 'true' || !KALSHI_API_KEY_SECRET;
 
 /**
  * Create authenticated axios instance for Kalshi
@@ -17,10 +19,29 @@ function createKalshiClient() {
   });
 
   // Add auth interceptor if credentials are available
-  if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET) {
+  if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET && !DEMO_MODE) {
     client.interceptors.request.use(config => {
-      config.headers['X-KALSHI-API-KEY-ID'] = KALSHI_API_KEY_ID;
-      config.headers['X-KALSHI-API-KEY-SECRET'] = KALSHI_API_KEY_SECRET;
+      try {
+        const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        const method = config.method.toUpperCase();
+        const url = new URL(config.url, KALSHI_API);
+        const path = url.pathname + url.search;
+        const body = config.data ? JSON.stringify(config.data) : '';
+        
+        const signString = `${timestamp}${method}${path}${body}`;
+        const signature = crypto.createSign('RSA-SHA256')
+          .update(signString)
+          .sign(KALSHI_API_KEY_SECRET, 'base64');
+        
+        config.headers['KALSHI-ACCESS-KEY'] = KALSHI_API_KEY_ID;
+        config.headers['KALSHI-SIGNATURE'] = signature;
+        config.headers['KALSHI-TIMESTAMP'] = timestamp;
+        
+        delete config.headers['X-KALSHI-API-KEY-ID'];
+        delete config.headers['X-KALSHI-API-KEY-SECRET'];
+      } catch (err) {
+        console.error('Auth signing error:', err.message);
+      }
       return config;
     });
   }
@@ -160,9 +181,6 @@ async function processNewPosition(position) {
   return executeCopyTrade(position, match);
 }
 
-// Track recently processed positions to prevent spam
-const processedPositions = new Set();
-
 /**
  * Execute the copy trade if conditions are met
  */
@@ -172,8 +190,9 @@ async function executeCopyTrade(position, match) {
     return null;
   }
 
-  // Skip if we already tried this position
-  if (processedPositions.has(position.conditionId)) {
+  // Skip if we already have this position
+  const existingPosition = await getOurPosition(position.conditionId);
+  if (existingPosition) {
     return null;
   }
 
@@ -186,31 +205,24 @@ async function executeCopyTrade(position, match) {
   // Calculate trade size
   let size;
   if (useFixedSize) {
-    // Use fixed dollar amount
     size = fixedTradeSize;
   } else {
-    // Use percentage of source position
     size = Math.min(maxPerTrade, Math.round(position.value * (copyAmount / 100)));
   }
 
   // Check price edge
   const priceDiff = Math.abs(match.yes_price - position.price);
   if (priceDiff * 100 < minEdge) {
-    processedPositions.add(position.conditionId);
     await addActivityLog(`Price edge too small (${(priceDiff * 100).toFixed(1)}¢ < ${minEdge}¢) - skipping ${position.title}`, 'info');
     return null;
   }
 
-  // Mark as processed to prevent repeated attempts
-  processedPositions.add(position.conditionId);
-
-  // Place order (if API keys are configured)
-  if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET) {
+  // Place order (if not in demo mode)
+  if (!DEMO_MODE && KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET) {
     const count = Math.round(size / match.yes_price);
     const result = await placeOrder(match.ticker, 'yes', count, match.yes_price);
     
     if (result) {
-      // Record our position
       await addOurPosition(position.conditionId, match.ticker, 'yes', count, match.yes_price);
       
       await addTradeLog({
@@ -227,11 +239,11 @@ async function executeCopyTrade(position, match) {
       return result;
     }
   } else {
-    // Simulate trade if no API keys
-    await addActivityLog(`Simulated trade: ${match.ticker} YES @ ${(match.yes_price * 100).toFixed(0)}¢ · $${size}`, 'success');
+    // Demo mode - simulate trade
+    await addActivityLog(`[DEMO] Simulated trade: ${match.ticker} YES @ ${(match.yes_price * 100).toFixed(0)}¢ · $${size}`, 'success');
     await addTradeLog({
       time: new Date().toLocaleTimeString(),
-      event: 'Auto-copied (simulated)',
+      event: 'Auto-copied (demo)',
       market: position.title,
       outcome: `${position.outcome} YES`,
       polyPrice: `${(position.price * 100).toFixed(1)}¢`,
