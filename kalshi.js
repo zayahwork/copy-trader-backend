@@ -47,19 +47,22 @@ function createKalshiClient() {
         // Format private key - handle both PKCS#1 and PKCS#8 formats
         let privateKey = KALSHI_API_KEY_SECRET.trim();
         
-        // If it's raw base64 without headers, try PKCS#1 format first (more common for Kalshi)
+        // If it's raw base64 without headers, format properly
         if (!privateKey.includes('-----BEGIN')) {
-          // Add line breaks every 64 chars for proper PEM format
           const keyLines = privateKey.match(/.{1,64}/g).join('\n');
-          // Try RSA PRIVATE KEY (PKCS#1) format first
           privateKey = `-----BEGIN RSA PRIVATE KEY-----\n${keyLines}\n-----END RSA PRIVATE KEY-----`;
         }
         
         console.log('Kalshi signing string:', signString);
         
-        const signature = crypto.createSign('RSA-SHA256')
-          .update(signString)
-          .sign(privateKey, 'base64');
+        // Kalshi requires RSA-PSS signing with SHA256
+        const sign = crypto.createSign('RSA-SHA256');
+        sign.update(signString);
+        const signature = sign.sign({
+          key: privateKey,
+          padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+          saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
+        }, 'base64');
         
         // Correct header names per Kalshi API docs
         config.headers['KALSHI-ACCESS-KEY'] = KALSHI_API_KEY_ID;
@@ -111,9 +114,13 @@ function debugKalshiAuth() {
     let signature = null;
     let signError = null;
     try {
-      signature = crypto.createSign('RSA-SHA256')
-        .update(signString)
-        .sign(privateKey, 'base64');
+      const sign = crypto.createSign('RSA-SHA256');
+      sign.update(signString);
+      signature = sign.sign({
+        key: privateKey,
+        padding: crypto.constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: crypto.constants.RSA_PSS_SALTLEN_DIGEST
+      }, 'base64');
     } catch (e) {
       signError = e.message;
     }
