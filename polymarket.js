@@ -54,19 +54,19 @@ async function updatePositions() {
   }
 
   let newPositions = [];
-  const existingPositions = require('./database').getPositions();
+  const existingPositions = await require('./database').getPositions();
   const existingIds = new Set(existingPositions.map(p => p.condition_id));
 
   for (const position of positions) {
-    upsertPosition(position);
+    await upsertPosition(position);
     
-    if (!existingIds.has(position.conditionId)) {
+    if (!existingIds.has(position.condition_id)) {
       newPositions.push(position);
     }
   }
 
   if (newPositions.length > 0) {
-    addActivityLog(`Detected ${newPositions.length} new positions`, 'trade');
+    await addActivityLog(`Detected ${newPositions.length} new positions`, 'trade');
   }
 
   return newPositions;

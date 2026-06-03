@@ -77,7 +77,7 @@ async function findMatchingMarket(position) {
 
     return null;
   } catch (error) {
-    addActivityLog(`Kalshi search error: ${error.message}`, 'warn');
+    await addActivityLog(`Kalshi search error: ${error.message}`, 'warn');
     return null;
   }
 }
@@ -96,10 +96,10 @@ async function placeOrder(ticker, side, count, price) {
       price
     });
 
-    addActivityLog(`Order placed: ${ticker} ${side} ${count} @ ${price}`, 'success');
+    await addActivityLog(`Order placed: ${ticker} ${side} ${count} @ ${price}`, 'success');
     return response.data;
   } catch (error) {
-    addActivityLog(`Order failed: ${error.message}`, 'error');
+    await addActivityLog(`Order failed: ${error.message}`, 'error');
     console.error('Kalshi order error:', error);
     return null;
   }
@@ -110,7 +110,7 @@ async function placeOrder(ticker, side, count, price) {
  */
 async function processNewPosition(position) {
   // Check if we already have a match
-  const existingMatch = getKalshiMatch(position.conditionId);
+  const existingMatch = await getKalshiMatch(position.conditionId);
   
   if (existingMatch) {
     // Use existing match
@@ -121,8 +121,8 @@ async function processNewPosition(position) {
   const match = await findMatchingMarket(position);
   
   if (!match) {
-    addActivityLog(`No Kalshi match for: ${position.title}`, 'warn');
-    upsertKalshiMatch({
+    await addActivityLog(`No Kalshi match for: ${position.title}`, 'warn');
+    await upsertKalshiMatch({
       polyConditionId: position.conditionId,
       ticker: 'N/A',
       title: 'No match found',
@@ -133,7 +133,7 @@ async function processNewPosition(position) {
     return null;
   }
 
-  upsertKalshiMatch(match);
+  await upsertKalshiMatch(match);
   return executeCopyTrade(position, match);
 }
 
@@ -141,15 +141,15 @@ async function processNewPosition(position) {
  * Execute the copy trade if conditions are met
  */
 async function executeCopyTrade(position, match) {
-  const isRunning = getSetting('is_running') === 'true';
+  const isRunning = await getSetting('is_running') === 'true';
   if (!isRunning) {
-    addActivityLog(`Copy trader paused - skipping ${position.title}`, 'info');
+    await addActivityLog(`Copy trader paused - skipping ${position.title}`, 'info');
     return null;
   }
 
-  const copyAmount = parseInt(getSetting('copy_amount') || '100');
-  const maxPerTrade = parseInt(getSetting('max_per_trade') || '250');
-  const minEdge = parseInt(getSetting('min_edge') || '3');
+  const copyAmount = parseInt(await getSetting('copy_amount') || '100');
+  const maxPerTrade = parseInt(await getSetting('max_per_trade') || '250');
+  const minEdge = parseInt(await getSetting('min_edge') || '3');
 
   // Calculate trade size
   const size = Math.min(maxPerTrade, Math.round(position.value * (copyAmount / 100)));
@@ -157,7 +157,7 @@ async function executeCopyTrade(position, match) {
   // Check price edge
   const priceDiff = Math.abs(match.yes_price - position.price);
   if (priceDiff * 100 < minEdge) {
-    addActivityLog(`Price edge too small (${(priceDiff * 100).toFixed(1)}¢ < ${minEdge}¢) - skipping`, 'info');
+    await addActivityLog(`Price edge too small (${(priceDiff * 100).toFixed(1)}¢ < ${minEdge}¢) - skipping`, 'info');
     return null;
   }
 
@@ -166,7 +166,7 @@ async function executeCopyTrade(position, match) {
     const result = await placeOrder(match.ticker, 'yes', Math.round(size / match.yes_price), match.yes_price);
     
     if (result) {
-      addTradeLog({
+      await addTradeLog({
         time: new Date().toLocaleTimeString(),
         event: 'Auto-copied',
         market: position.title,
@@ -181,8 +181,8 @@ async function executeCopyTrade(position, match) {
     }
   } else {
     // Simulate trade if no API keys
-    addActivityLog(`Simulated trade: ${match.ticker} YES @ ${(match.yes_price * 100).toFixed(0)}¢ · $${size}`, 'success');
-    addTradeLog({
+    await addActivityLog(`Simulated trade: ${match.ticker} YES @ ${(match.yes_price * 100).toFixed(0)}¢ · $${size}`, 'success');
+    await addTradeLog({
       time: new Date().toLocaleTimeString(),
       event: 'Auto-copied (simulated)',
       market: position.title,

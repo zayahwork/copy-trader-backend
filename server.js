@@ -24,19 +24,23 @@ app.use(cors());
 app.use(express.json());
 
 // Initialize database
-initDatabase();
+initDatabase().then(() => {
+  console.log('Database initialized');
+}).catch(err => {
+  console.error('Failed to initialize database:', err);
+});
 
 // API Routes
 
 // Get all data for the frontend
-app.get('/api/data', (req, res) => {
+app.get('/api/data', async (req, res) => {
   try {
     const data = {
-      settings: getAllSettings(),
-      positions: getPositions(),
-      kalshiMatches: getKalshiMatches(),
-      tradeLog: getTradeLog(30),
-      activityLog: getActivityLog(50)
+      settings: await getAllSettings(),
+      positions: await getPositions(),
+      kalshiMatches: await getKalshiMatches(),
+      tradeLog: await getTradeLog(30),
+      activityLog: await getActivityLog(50)
     };
     res.json(data);
   } catch (error) {
@@ -45,23 +49,23 @@ app.get('/api/data', (req, res) => {
 });
 
 // Get settings
-app.get('/api/settings', (req, res) => {
+app.get('/api/settings', async (req, res) => {
   try {
-    res.json(getAllSettings());
+    res.json(await getAllSettings());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Update settings
-app.post('/api/settings', (req, res) => {
+app.post('/api/settings', async (req, res) => {
   try {
     const { key, value } = req.body;
     if (!key || value === undefined) {
       return res.status(400).json({ error: 'key and value required' });
     }
-    setSetting(key, value);
-    addActivityLog(`Setting updated: ${key} = ${value}`, 'info');
+    await setSetting(key, value);
+    await addActivityLog(`Setting updated: ${key} = ${value}`, 'info');
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -69,50 +73,50 @@ app.post('/api/settings', (req, res) => {
 });
 
 // Get positions
-app.get('/api/positions', (req, res) => {
+app.get('/api/positions', async (req, res) => {
   try {
-    res.json(getPositions());
+    res.json(await getPositions());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get Kalshi matches
-app.get('/api/matches', (req, res) => {
+app.get('/api/matches', async (req, res) => {
   try {
-    res.json(getKalshiMatches());
+    res.json(await getKalshiMatches());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get trade log
-app.get('/api/trade-log', (req, res) => {
+app.get('/api/trade-log', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    res.json(getTradeLog(limit));
+    res.json(await getTradeLog(limit));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Get activity log
-app.get('/api/activity-log', (req, res) => {
+app.get('/api/activity-log', async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
-    res.json(getActivityLog(limit));
+    res.json(await getActivityLog(limit));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
 // Start/stop copy trader
-app.post('/api/toggle', (req, res) => {
+app.post('/api/toggle', async (req, res) => {
   try {
-    const current = getSetting('is_running') === 'true';
+    const current = await getSetting('is_running') === 'true';
     const newValue = !current;
-    setSetting('is_running', newValue.toString());
-    addActivityLog(`Copy trader ${newValue ? 'started' : 'stopped'}`, newValue ? 'success' : 'info');
+    await setSetting('is_running', newValue.toString());
+    await addActivityLog(`Copy trader ${newValue ? 'started' : 'stopped'}`, newValue ? 'success' : 'info');
     res.json({ isRunning: newValue });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -122,7 +126,7 @@ app.post('/api/toggle', (req, res) => {
 // Manual poll trigger
 app.post('/api/poll', async (req, res) => {
   try {
-    addActivityLog('Manual poll triggered', 'info');
+    await addActivityLog('Manual poll triggered', 'info');
     const newPositions = await updatePositions();
     
     // Process new positions
@@ -144,12 +148,12 @@ app.get('/health', (req, res) => {
 // Scheduled polling job (every 30 seconds)
 cron.schedule('*/30 * * * * *', async () => {
   try {
-    const isRunning = getSetting('is_running') === 'true';
+    const isRunning = await getSetting('is_running') === 'true';
     if (!isRunning) {
       return;
     }
 
-    addActivityLog('Scheduled poll - checking Polymarket', 'info');
+    await addActivityLog('Scheduled poll - checking Polymarket', 'info');
     const newPositions = await updatePositions();
     
     // Process new positions
@@ -157,7 +161,7 @@ cron.schedule('*/30 * * * * *', async () => {
       await processNewPosition(position);
     }
   } catch (error) {
-    addActivityLog(`Poll error: ${error.message}`, 'error');
+    await addActivityLog(`Poll error: ${error.message}`, 'error');
     console.error('Poll error:', error);
   }
 });
@@ -165,18 +169,17 @@ cron.schedule('*/30 * * * * *', async () => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Copy trader backend running on port ${PORT}`);
-  addActivityLog('Server started', 'success');
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   console.log('SIGTERM received, shutting down gracefully');
-  addActivityLog('Server shutting down', 'info');
+  await addActivityLog('Server shutting down', 'info');
   process.exit(0);
 });
 
-process.on('SIGINT', () => {
+process.on('SIGINT', async () => {
   console.log('SIGINT received, shutting down gracefully');
-  addActivityLog('Server shutting down', 'info');
+  await addActivityLog('Server shutting down', 'info');
   process.exit(0);
 });
