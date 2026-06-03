@@ -2,7 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
-const KALSHI_API = process.env.KALSHI_API || 'https://external-api.kalshi.com';
+const KALSHI_API = process.env.KALSHI_API || 'https://external-api.kalshi.com/trade-api/v2';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
 const KALSHI_API_KEY_SECRET = process.env.KALSHI_API_KEY_SECRET;
 const DEMO_MODE = process.env.DEMO_MODE === 'true' || !KALSHI_API_KEY_SECRET;
