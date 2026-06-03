@@ -95,6 +95,14 @@ async function initDatabase() {
       )
     `);
 
+    // Migration: add status/closed_at columns if they don't exist (for existing databases)
+    try {
+      await client.query(`ALTER TABLE our_positions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open'`);
+      await client.query(`ALTER TABLE our_positions ADD COLUMN IF NOT EXISTS closed_at TIMESTAMP`);
+    } catch (e) {
+      // Ignore if columns already exist
+    }
+
     // Insert default settings
     const settings = [
       { key: 'copy_amount', value: '100' },
