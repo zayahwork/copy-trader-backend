@@ -2,7 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
-const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com/trade-api/v2';
+const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
 const KALSHI_API_KEY_SECRET = process.env.KALSHI_API_KEY_SECRET;
 const DEMO_MODE = process.env.DEMO_MODE === 'true' || !KALSHI_API_KEY_SECRET;
@@ -22,10 +22,11 @@ function createKalshiClient() {
   if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET && !DEMO_MODE) {
     client.interceptors.request.use(config => {
       try {
-        const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+        // Kalshi requires timestamp in milliseconds (not ISO format)
+        const timestampMs = Date.now().toString();
         const method = config.method.toUpperCase();
         
-        // Extract path from URL
+        // Extract path from URL - must include full API path
         let path = config.url;
         if (!path) path = '/';
         if (path.startsWith('http')) {
@@ -33,10 +34,15 @@ function createKalshiClient() {
           path = urlObj.pathname + urlObj.search;
         }
         
+        // Ensure path includes /trade-api/v2 prefix
+        if (!path.startsWith('/trade-api/v2')) {
+          path = '/trade-api/v2' + path;
+        }
+        
         const body = config.data ? JSON.stringify(config.data) : '';
         
-        // Kalshi sign string format: timestamp + method + path + body
-        const signString = `${timestamp}${method}${path}${body}`;
+        // Kalshi sign string format: timestampMs + method + path + body
+        const signString = `${timestampMs}${method}${path}${body}`;
         
         // Format private key - handle both PKCS#1 and PKCS#8 formats
         let privateKey = KALSHI_API_KEY_SECRET.trim();
@@ -49,16 +55,16 @@ function createKalshiClient() {
           privateKey = `-----BEGIN RSA PRIVATE KEY-----\n${keyLines}\n-----END RSA PRIVATE KEY-----`;
         }
         
-        console.log('Kalshi signing string:', signString.substring(0, 100) + '...');
-        console.log('Key format:', privateKey.includes('RSA PRIVATE KEY') ? 'PKCS#1' : 'PKCS#8');
+        console.log('Kalshi signing string:', signString);
         
         const signature = crypto.createSign('RSA-SHA256')
           .update(signString)
           .sign(privateKey, 'base64');
         
+        // Correct header names per Kalshi API docs
         config.headers['KALSHI-ACCESS-KEY'] = KALSHI_API_KEY_ID;
-        config.headers['KALSHI-SIGNATURE'] = signature;
-        config.headers['KALSHI-TIMESTAMP'] = timestamp;
+        config.headers['KALSHI-ACCESS-SIGNATURE'] = signature;
+        config.headers['KALSHI-ACCESS-TIMESTAMP'] = timestampMs;
         
         console.log(`Kalshi auth: ${method} ${path}`);
       } catch (err) {
@@ -88,11 +94,11 @@ function createKalshiClient() {
  */
 function debugKalshiAuth() {
   try {
-    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const timestampMs = Date.now().toString();
     const method = 'GET';
-    const path = '/user/balance';
+    const path = '/trade-api/v2/portfolio/balance';
     const body = '';
-    const signString = `${timestamp}${method}${path}${body}`;
+    const signString = `${timestampMs}${method}${path}${body}`;
     
     let privateKey = KALSHI_API_KEY_SECRET ? KALSHI_API_KEY_SECRET.trim() : '';
     const hasHeaders = privateKey.includes('-----BEGIN');
@@ -122,7 +128,12 @@ function debugKalshiAuth() {
       sign_string: signString,
       signature_valid: !!signature,
       signature_preview: signature ? signature.substring(0, 50) + '...' : null,
-      sign_error: signError
+      sign_error: signError,
+      headers: {
+        'KALSHI-ACCESS-KEY': KALSHI_API_KEY_ID,
+        'KALSHI-ACCESS-TIMESTAMP': timestampMs,
+        'KALSHI-ACCESS-SIGNATURE': signature ? signature.substring(0, 20) + '...' : null
+      }
     };
   } catch (e) {
     return { error: e.message };
@@ -140,31 +151,19 @@ async function checkKalshiBalance() {
     
     const client = createKalshiClient();
     
-    // Try user balance endpoint first (Kalshi v2)
-    try {
-      const response = await client.get('/user/balance');
-      return {
-        demo: false,
-        balance: response.data?.balance || 0,
-        available: response.data?.available_balance || 0,
-        endpoint: '/user/balance'
-      };
-    } catch (err1) {
-      // Fallback to /balance
-      console.log('/user/balance failed, trying /balance...');
-      const response = await client.get('/balance');
-      return {
-        demo: false,
-        balance: response.data?.balance || 0,
-        available: response.data?.available_balance || 0,
-        endpoint: '/balance'
-      };
-    }
+    // Correct Kalshi v2 endpoint for portfolio balance
+    const response = await client.get('/portfolio/balance');
+    return {
+      demo: false,
+      balance: response.data?.balance || 0,
+      available: response.data?.available_balance || 0,
+      endpoint: '/portfolio/balance'
+    };
   } catch (error) {
     console.error('Kalshi balance check failed:', error.message);
     if (error.response) {
-      console.error('Response data:', error.response.data);
       console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
     }
     return { demo: false, balance: 0, error: error.message };
   }
@@ -189,7 +188,7 @@ async function findMatchingMarket(position) {
       return null;
     }
 
-    const response = await client.get('/markets', {
+    const response = await client.get('/trade-api/v2/markets', {
       params: {
         limit: 20,
         status: 'open'
@@ -232,7 +231,7 @@ async function placeOrder(ticker, side, count, price) {
   try {
     const client = createKalshiClient();
     
-    const response = await client.post('/trade', {
+    const response = await client.post('/trade-api/v2/trade', {
       ticker,
       side,
       count,
@@ -255,7 +254,7 @@ async function closePosition(ticker, side, count, price) {
   try {
     const client = createKalshiClient();
     
-    const response = await client.post('/trade', {
+    const response = await client.post('/trade-api/v2/trade', {
       ticker,
       side,
       count,
