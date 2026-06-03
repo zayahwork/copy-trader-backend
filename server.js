@@ -14,7 +14,7 @@ const {
   addActivityLog 
 } = require('./database');
 const { updatePositions } = require('./polymarket');
-const { processNewPosition, checkForClosedPositions, checkKalshiBalance } = require('./kalshi');
+const { processNewPosition, checkForClosedPositions, checkKalshiBalance, debugKalshiAuth } = require('./kalshi');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -183,6 +183,16 @@ app.get('/api/kalshi-status', async (req, res) => {
   try {
     const status = await checkKalshiBalance();
     res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug Kalshi auth (shows what we're sending without making API call)
+app.get('/api/kalshi-debug', (req, res) => {
+  try {
+    const debug = debugKalshiAuth();
+    res.json(debug);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -84,6 +84,52 @@ function createKalshiClient() {
 }
 
 /**
+ * Debug auth to see exactly what we're sending
+ */
+function debugKalshiAuth() {
+  try {
+    const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+    const method = 'GET';
+    const path = '/user/balance';
+    const body = '';
+    const signString = `${timestamp}${method}${path}${body}`;
+    
+    let privateKey = KALSHI_API_KEY_SECRET ? KALSHI_API_KEY_SECRET.trim() : '';
+    const hasHeaders = privateKey.includes('-----BEGIN');
+    
+    if (!hasHeaders && privateKey) {
+      const keyLines = privateKey.match(/.{1,64}/g).join('\n');
+      privateKey = `-----BEGIN RSA PRIVATE KEY-----\n${keyLines}\n-----END RSA PRIVATE KEY-----`;
+    }
+    
+    let signature = null;
+    let signError = null;
+    try {
+      signature = crypto.createSign('RSA-SHA256')
+        .update(signString)
+        .sign(privateKey, 'base64');
+    } catch (e) {
+      signError = e.message;
+    }
+    
+    return {
+      demo_mode: DEMO_MODE,
+      has_key_id: !!KALSHI_API_KEY_ID,
+      has_secret: !!KALSHI_API_KEY_SECRET,
+      key_id: KALSHI_API_KEY_ID,
+      secret_length: KALSHI_API_KEY_SECRET ? KALSHI_API_KEY_SECRET.length : 0,
+      has_pem_headers: hasHeaders,
+      sign_string: signString,
+      signature_valid: !!signature,
+      signature_preview: signature ? signature.substring(0, 50) + '...' : null,
+      sign_error: signError
+    };
+  } catch (e) {
+    return { error: e.message };
+  }
+}
+
+/**
  * Check Kalshi account balance and verify credentials
  */
 async function checkKalshiBalance() {
@@ -410,5 +456,6 @@ module.exports = {
   closePosition,
   processNewPosition,
   checkForClosedPositions,
-  checkKalshiBalance
+  checkKalshiBalance,
+  debugKalshiAuth
 };
