@@ -34,7 +34,10 @@ function createKalshiClient() {
           path = urlObj.pathname + urlObj.search;
         }
         
-        // New Kalshi API uses simpler paths without /trade-api/v2 prefix
+        // Ensure path includes /trade-api/v2 prefix for api.elections.kalshi.com
+        if (!path.startsWith('/trade-api/v2')) {
+          path = '/trade-api/v2' + path;
+        }
         
         const body = config.data ? JSON.stringify(config.data) : '';
         
