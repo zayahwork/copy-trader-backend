@@ -1,7 +1,7 @@
 const axios = require('axios');
 const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
-const KALSHI_API = process.env.KALSHI_API || 'https://api.kalshi.co/v1';
+const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
 const KALSHI_API_KEY_SECRET = process.env.KALSHI_API_KEY_SECRET;
 
@@ -160,13 +160,20 @@ async function processNewPosition(position) {
   return executeCopyTrade(position, match);
 }
 
+// Track recently processed positions to prevent spam
+const processedPositions = new Set();
+
 /**
  * Execute the copy trade if conditions are met
  */
 async function executeCopyTrade(position, match) {
   const isRunning = await getSetting('is_running') === 'true';
   if (!isRunning) {
-    await addActivityLog(`Copy trader paused - skipping ${position.title}`, 'info');
+    return null;
+  }
+
+  // Skip if we already tried this position
+  if (processedPositions.has(position.conditionId)) {
     return null;
   }
 
@@ -189,9 +196,13 @@ async function executeCopyTrade(position, match) {
   // Check price edge
   const priceDiff = Math.abs(match.yes_price - position.price);
   if (priceDiff * 100 < minEdge) {
-    await addActivityLog(`Price edge too small (${(priceDiff * 100).toFixed(1)}¢ < ${minEdge}¢) - skipping`, 'info');
+    processedPositions.add(position.conditionId);
+    await addActivityLog(`Price edge too small (${(priceDiff * 100).toFixed(1)}¢ < ${minEdge}¢) - skipping ${position.title}`, 'info');
     return null;
   }
+
+  // Mark as processed to prevent repeated attempts
+  processedPositions.add(position.conditionId);
 
   // Place order (if API keys are configured)
   if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET) {
