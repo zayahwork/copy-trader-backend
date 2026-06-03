@@ -149,8 +149,8 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Scheduled polling job (every 30 seconds)
-cron.schedule('*/30 * * * * *', async () => {
+// Scheduled polling job (every 5 seconds)
+cron.schedule('*/5 * * * * *', async () => {
   try {
     const isRunning = await getSetting('is_running') === 'true';
     if (!isRunning) {

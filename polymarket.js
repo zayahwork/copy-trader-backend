@@ -11,7 +11,7 @@ async function fetchPolymarketPositions() {
   try {
     const response = await axios.get(`${POLYMARKET_DATA_API}/positions`, {
       params: {
-        maker: TRADER_ADDRESS,
+        user: TRADER_ADDRESS,
         limit: 100
       }
     });
