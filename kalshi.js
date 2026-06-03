@@ -25,7 +25,7 @@ function createKalshiClient() {
         const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
         const method = config.method.toUpperCase();
         
-        // Extract path from URL (must include /trade-api/v2 prefix)
+        // Extract path from URL
         let path = config.url;
         if (!path) path = '/';
         if (path.startsWith('http')) {
@@ -38,11 +38,19 @@ function createKalshiClient() {
         // Kalshi sign string format: timestamp + method + path + body
         const signString = `${timestamp}${method}${path}${body}`;
         
-        // Ensure private key has proper PEM format
-        let privateKey = KALSHI_API_KEY_SECRET;
-        if (!privateKey.includes('BEGIN PRIVATE KEY')) {
-          privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+        // Format private key - handle both PKCS#1 and PKCS#8 formats
+        let privateKey = KALSHI_API_KEY_SECRET.trim();
+        
+        // If it's raw base64 without headers, try PKCS#1 format first (more common for Kalshi)
+        if (!privateKey.includes('-----BEGIN')) {
+          // Add line breaks every 64 chars for proper PEM format
+          const keyLines = privateKey.match(/.{1,64}/g).join('\n');
+          // Try RSA PRIVATE KEY (PKCS#1) format first
+          privateKey = `-----BEGIN RSA PRIVATE KEY-----\n${keyLines}\n-----END RSA PRIVATE KEY-----`;
         }
+        
+        console.log('Kalshi signing string:', signString.substring(0, 100) + '...');
+        console.log('Key format:', privateKey.includes('RSA PRIVATE KEY') ? 'PKCS#1' : 'PKCS#8');
         
         const signature = crypto.createSign('RSA-SHA256')
           .update(signString)
@@ -55,9 +63,21 @@ function createKalshiClient() {
         console.log(`Kalshi auth: ${method} ${path}`);
       } catch (err) {
         console.error('Auth signing error:', err.message);
+        console.error('Key starts with:', KALSHI_API_KEY_SECRET.substring(0, 30));
       }
       return config;
     });
+    
+    // Add response error interceptor for debugging
+    client.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response) {
+          console.error('Kalshi API error:', error.response.status, error.response.data);
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   return client;
@@ -73,15 +93,33 @@ async function checkKalshiBalance() {
     }
     
     const client = createKalshiClient();
-    const response = await client.get('/balance');
     
-    return {
-      demo: false,
-      balance: response.data?.balance || 0,
-      available: response.data?.available_balance || 0
-    };
+    // Try user balance endpoint first (Kalshi v2)
+    try {
+      const response = await client.get('/user/balance');
+      return {
+        demo: false,
+        balance: response.data?.balance || 0,
+        available: response.data?.available_balance || 0,
+        endpoint: '/user/balance'
+      };
+    } catch (err1) {
+      // Fallback to /balance
+      console.log('/user/balance failed, trying /balance...');
+      const response = await client.get('/balance');
+      return {
+        demo: false,
+        balance: response.data?.balance || 0,
+        available: response.data?.available_balance || 0,
+        endpoint: '/balance'
+      };
+    }
   } catch (error) {
     console.error('Kalshi balance check failed:', error.message);
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
+    }
     return { demo: false, balance: 0, error: error.message };
   }
 }
