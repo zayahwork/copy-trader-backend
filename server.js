@@ -40,15 +40,17 @@ app.get('/api/data', async (req, res) => {
     const ourPositions = await require('./database').getOurPositions();
     const tradeLog = await getTradeLog(30);
     
-    // Calculate demo portfolio stats from trade history
-    const startingBalance = parseFloat(settings.starting_balance || '11.00');
+    // Get real Kalshi balance
+    const kalshiStatus = await checkKalshiBalance();
+    
+    // Calculate portfolio stats from trade history + real Kalshi balance
     const history = await require('./database').getOurPositionHistory();
     
     // Total invested = sum of all opened positions
     const totalInvested = history.reduce((sum, p) => sum + (p.entry_price * p.count), 0);
-    // Current value = only open positions at current market price (simplified: assume $0.50 per contract)
+    // Current value = only open positions at current market price
     const openPositionsValue = ourPositions.reduce((sum, p) => sum + (p.count * 0.5), 0);
-    // Realized P&L from closed positions (simplified: assume 50% return for demo)
+    // Realized P&L from closed positions
     const closedPositions = history.filter(p => p.status === 'closed');
     const realizedPnl = closedPositions.reduce((sum, p) => sum + (p.count * 0.5) - (p.entry_price * p.count), 0);
     const currentValue = openPositionsValue + realizedPnl;
@@ -61,13 +63,15 @@ app.get('/api/data', async (req, res) => {
       kalshiMatches: await getKalshiMatches(),
       tradeLog,
       activityLog: await getActivityLog(50),
+      kalshiStatus,
       portfolio: {
-        startingBalance: startingBalance.toFixed(2),
+        startingBalance: (kalshiStatus.balance / 100).toFixed(2), // Real Kalshi balance in dollars
         totalInvested: totalInvested.toFixed(2),
         currentValue: Math.max(0, currentValue).toFixed(2),
         totalPnl: totalPnl.toFixed(2),
         openPositions: ourPositions.length,
-        totalTrades: history.length
+        totalTrades: history.length,
+        isRealTrading: !kalshiStatus.demo && kalshiStatus.balance > 0
       }
     };
     res.json(data);
