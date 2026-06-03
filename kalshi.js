@@ -2,7 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
-const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com';
+const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com/trade-api/v2';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
 const KALSHI_API_KEY_SECRET = process.env.KALSHI_API_KEY_SECRET;
 const DEMO_MODE = process.env.DEMO_MODE === 'true' || !KALSHI_API_KEY_SECRET;
@@ -24,21 +24,35 @@ function createKalshiClient() {
       try {
         const timestamp = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
         const method = config.method.toUpperCase();
-        const url = new URL(config.url, KALSHI_API);
-        const path = url.pathname + url.search;
+        
+        // Extract path from URL (must include /trade-api/v2 prefix)
+        let path = config.url;
+        if (!path) path = '/';
+        if (path.startsWith('http')) {
+          const urlObj = new URL(path);
+          path = urlObj.pathname + urlObj.search;
+        }
+        
         const body = config.data ? JSON.stringify(config.data) : '';
         
+        // Kalshi sign string format: timestamp + method + path + body
         const signString = `${timestamp}${method}${path}${body}`;
+        
+        // Ensure private key has proper PEM format
+        let privateKey = KALSHI_API_KEY_SECRET;
+        if (!privateKey.includes('BEGIN PRIVATE KEY')) {
+          privateKey = `-----BEGIN PRIVATE KEY-----\n${privateKey}\n-----END PRIVATE KEY-----`;
+        }
+        
         const signature = crypto.createSign('RSA-SHA256')
           .update(signString)
-          .sign(KALSHI_API_KEY_SECRET, 'base64');
+          .sign(privateKey, 'base64');
         
         config.headers['KALSHI-ACCESS-KEY'] = KALSHI_API_KEY_ID;
         config.headers['KALSHI-SIGNATURE'] = signature;
         config.headers['KALSHI-TIMESTAMP'] = timestamp;
         
-        delete config.headers['X-KALSHI-API-KEY-ID'];
-        delete config.headers['X-KALSHI-API-KEY-SECRET'];
+        console.log(`Kalshi auth: ${method} ${path}`);
       } catch (err) {
         console.error('Auth signing error:', err.message);
       }
@@ -47,6 +61,29 @@ function createKalshiClient() {
   }
 
   return client;
+}
+
+/**
+ * Check Kalshi account balance and verify credentials
+ */
+async function checkKalshiBalance() {
+  try {
+    if (DEMO_MODE) {
+      return { demo: true, balance: 0 };
+    }
+    
+    const client = createKalshiClient();
+    const response = await client.get('/balance');
+    
+    return {
+      demo: false,
+      balance: response.data?.balance || 0,
+      available: response.data?.available_balance || 0
+    };
+  } catch (error) {
+    console.error('Kalshi balance check failed:', error.message);
+    return { demo: false, balance: 0, error: error.message };
+  }
 }
 
 /**
@@ -334,5 +371,6 @@ module.exports = {
   placeOrder,
   closePosition,
   processNewPosition,
-  checkForClosedPositions
+  checkForClosedPositions,
+  checkKalshiBalance
 };

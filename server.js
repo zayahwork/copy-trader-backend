@@ -14,7 +14,7 @@ const {
   addActivityLog 
 } = require('./database');
 const { updatePositions } = require('./polymarket');
-const { processNewPosition, checkForClosedPositions } = require('./kalshi');
+const { processNewPosition, checkForClosedPositions, checkKalshiBalance } = require('./kalshi');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -176,6 +176,16 @@ app.post('/api/poll', async (req, res) => {
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Check Kalshi balance and connection
+app.get('/api/kalshi-status', async (req, res) => {
+  try {
+    const status = await checkKalshiBalance();
+    res.json(status);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Test endpoint - simulate a new Ferrari trade (GET for easy browser testing)
