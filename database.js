@@ -97,11 +97,12 @@ async function initDatabase() {
     const settings = [
       { key: 'copy_amount', value: '100' },
       { key: 'max_per_trade', value: '250' },
-      { key: 'min_edge', value: '3' },
+      { key: 'min_edge', value: '0' },
       { key: 'auto_close', value: 'true' },
       { key: 'is_running', value: 'false' },
       { key: 'use_fixed_size', value: 'true' },
       { key: 'fixed_trade_size', value: '0.50' },
+      { key: 'starting_balance', value: '11.00' },
     ];
 
     for (const setting of settings) {

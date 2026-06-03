@@ -21,11 +21,6 @@ async function fetchPolymarketPositions() {
       return [];
     }
 
-    // DEBUG: Log first position to see actual API structure
-    if (response.data.length > 0) {
-      console.log('DEBUG Polymarket raw position:', JSON.stringify(response.data[0], null, 2));
-    }
-
     const positions = response.data.map(pos => ({
       conditionId: pos.conditionId,
       title: pos.title || 'Unknown market',

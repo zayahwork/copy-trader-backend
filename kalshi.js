@@ -75,23 +75,14 @@ async function findMatchingMarket(position) {
       }
     });
 
-    // DEBUG: Log Kalshi response
-    console.log('DEBUG Kalshi markets response:', JSON.stringify(response.data, null, 2).substring(0, 500));
-
     if (!response.data?.markets) {
-      console.log('DEBUG: No markets in Kalshi response');
       return null;
     }
-
-    console.log(`DEBUG: Searching Kalshi for "${position.title}" with keywords: ${keywords.join(', ')}`);
-    console.log(`DEBUG: Found ${response.data.markets.length} Kalshi markets`);
 
     // Simple matching logic - can be improved
     const match = response.data.markets.find(market => {
       const marketTitle = market.title.toLowerCase();
-      const found = keywords.some(kw => marketTitle.includes(kw));
-      if (found) console.log(`DEBUG MATCH: "${position.title}" → "${market.title}" (ticker: ${market.ticker})`);
-      return found;
+      return keywords.some(kw => marketTitle.includes(kw));
     });
 
     if (match) {

@@ -35,12 +35,32 @@ initDatabase().then(() => {
 // Get all data for the frontend
 app.get('/api/data', async (req, res) => {
   try {
+    const settings = await getAllSettings();
+    const positions = await getPositions();
+    const ourPositions = await require('./database').getOurPositions();
+    const tradeLog = await getTradeLog(30);
+    
+    // Calculate demo portfolio stats
+    const startingBalance = parseFloat(settings.starting_balance || '11.00');
+    const totalInvested = ourPositions.reduce((sum, p) => sum + (p.entry_price * p.count), 0);
+    const currentValue = ourPositions.reduce((sum, p) => sum + (p.count * 0.5), 0); // Simplified for demo
+    const totalPnl = currentValue - totalInvested;
+    
     const data = {
-      settings: await getAllSettings(),
-      positions: await getPositions(),
+      settings,
+      positions,
+      ourPositions,
       kalshiMatches: await getKalshiMatches(),
-      tradeLog: await getTradeLog(30),
-      activityLog: await getActivityLog(50)
+      tradeLog,
+      activityLog: await getActivityLog(50),
+      portfolio: {
+        startingBalance: startingBalance.toFixed(2),
+        totalInvested: totalInvested.toFixed(2),
+        currentValue: currentValue.toFixed(2),
+        totalPnl: totalPnl.toFixed(2),
+        openPositions: ourPositions.length,
+        totalTrades: tradeLog.filter(t => t.event === 'Auto-copied (demo)' || t.event === 'Auto-copied').length
+      }
     };
     res.json(data);
   } catch (error) {
