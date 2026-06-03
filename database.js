@@ -88,7 +88,9 @@ async function initDatabase() {
         side TEXT NOT NULL,
         count INTEGER NOT NULL,
         entry_price REAL NOT NULL,
+        status TEXT DEFAULT 'open',
         opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        closed_at TIMESTAMP,
         UNIQUE(poly_condition_id, kalshi_ticker)
       )
     `);
@@ -259,12 +261,17 @@ async function addOurPosition(polyConditionId, kalshiTicker, side, count, entryP
 }
 
 async function getOurPositions() {
-  const result = await pool.query('SELECT * FROM our_positions');
+  const result = await pool.query("SELECT * FROM our_positions WHERE status = 'open'");
+  return result.rows;
+}
+
+async function getOurPositionHistory() {
+  const result = await pool.query('SELECT * FROM our_positions ORDER BY opened_at DESC');
   return result.rows;
 }
 
 async function removeOurPosition(polyConditionId) {
-  await pool.query('DELETE FROM our_positions WHERE poly_condition_id = $1', [polyConditionId]);
+  await pool.query("UPDATE our_positions SET status = 'closed', closed_at = CURRENT_TIMESTAMP WHERE poly_condition_id = $1", [polyConditionId]);
 }
 
 async function getOurPosition(polyConditionId) {
@@ -290,6 +297,7 @@ module.exports = {
   getActivityLog,
   addOurPosition,
   getOurPositions,
+  getOurPositionHistory,
   removeOurPosition,
   getOurPosition,
 };

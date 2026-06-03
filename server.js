@@ -40,10 +40,18 @@ app.get('/api/data', async (req, res) => {
     const ourPositions = await require('./database').getOurPositions();
     const tradeLog = await getTradeLog(30);
     
-    // Calculate demo portfolio stats
+    // Calculate demo portfolio stats from trade history
     const startingBalance = parseFloat(settings.starting_balance || '11.00');
-    const totalInvested = ourPositions.reduce((sum, p) => sum + (p.entry_price * p.count), 0);
-    const currentValue = ourPositions.reduce((sum, p) => sum + (p.count * 0.5), 0); // Simplified for demo
+    const history = await require('./database').getOurPositionHistory();
+    
+    // Total invested = sum of all opened positions
+    const totalInvested = history.reduce((sum, p) => sum + (p.entry_price * p.count), 0);
+    // Current value = only open positions at current market price (simplified: assume $0.50 per contract)
+    const openPositionsValue = ourPositions.reduce((sum, p) => sum + (p.count * 0.5), 0);
+    // Realized P&L from closed positions (simplified: assume 50% return for demo)
+    const closedPositions = history.filter(p => p.status === 'closed');
+    const realizedPnl = closedPositions.reduce((sum, p) => sum + (p.count * 0.5) - (p.entry_price * p.count), 0);
+    const currentValue = openPositionsValue + realizedPnl;
     const totalPnl = currentValue - totalInvested;
     
     const data = {
@@ -56,10 +64,10 @@ app.get('/api/data', async (req, res) => {
       portfolio: {
         startingBalance: startingBalance.toFixed(2),
         totalInvested: totalInvested.toFixed(2),
-        currentValue: currentValue.toFixed(2),
+        currentValue: Math.max(0, currentValue).toFixed(2),
         totalPnl: totalPnl.toFixed(2),
         openPositions: ourPositions.length,
-        totalTrades: tradeLog.filter(t => t.event === 'Auto-copied (demo)' || t.event === 'Auto-copied').length
+        totalTrades: history.length
       }
     };
     res.json(data);
