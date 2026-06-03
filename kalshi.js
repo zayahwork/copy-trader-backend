@@ -154,18 +154,31 @@ async function closePosition(ticker, side, count, price) {
  * Process a new position and attempt to copy trade
  */
 async function processNewPosition(position) {
-  // Check if we already have a match
+  // Check if we already have a valid match (not N/A)
   const existingMatch = await getKalshiMatch(position.conditionId);
   
-  if (existingMatch) {
-    // Use existing match
+  if (existingMatch && existingMatch.ticker !== 'N/A') {
     return executeCopyTrade(position, existingMatch);
   }
 
-  // Try to find a match
+  // Try to find a match on Kalshi
   const match = await findMatchingMarket(position);
   
   if (!match) {
+    // For demo mode, create a synthetic match using Polymarket data
+    if (DEMO_MODE) {
+      const syntheticMatch = {
+        polyConditionId: position.conditionId,
+        ticker: `DEMO-${position.conditionId.substring(0, 8)}`,
+        title: position.title,
+        yes_price: position.price, // Use Polymarket price as Kalshi price
+        category: position.category,
+        matched: true
+      };
+      await upsertKalshiMatch(syntheticMatch);
+      return executeCopyTrade(position, syntheticMatch);
+    }
+    
     await addActivityLog(`No Kalshi match for: ${position.title}`, 'warn');
     await upsertKalshiMatch({
       polyConditionId: position.conditionId,
@@ -241,6 +254,8 @@ async function executeCopyTrade(position, match) {
     }
   } else {
     // Demo mode - simulate trade
+    const count = Math.round(size / match.yes_price);
+    await addOurPosition(position.conditionId, match.ticker, 'yes', count, match.yes_price);
     await addActivityLog(`[DEMO] Simulated trade: ${match.ticker} YES @ ${(match.yes_price * 100).toFixed(0)}¢ · $${size}`, 'success');
     await addTradeLog({
       time: new Date().toLocaleTimeString(),
