@@ -1,0 +1,8 @@
+[phases.build]
+cmds = ["npm install"]
+
+[phases.start]
+cmd = "node server.js"
+
+[variables]
+NODE_ENV = "production"
