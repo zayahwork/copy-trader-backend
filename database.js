@@ -86,6 +86,8 @@ async function initDatabase() {
       { key: 'min_edge', value: '3' },
       { key: 'auto_close', value: 'true' },
       { key: 'is_running', value: 'false' },
+      { key: 'use_fixed_size', value: 'true' },
+      { key: 'fixed_trade_size', value: '0.50' },
     ];
 
     for (const setting of settings) {

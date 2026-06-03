@@ -147,12 +147,21 @@ async function executeCopyTrade(position, match) {
     return null;
   }
 
+  const useFixedSize = await getSetting('use_fixed_size') === 'true';
+  const fixedTradeSize = parseFloat(await getSetting('fixed_trade_size') || '0.50');
   const copyAmount = parseInt(await getSetting('copy_amount') || '100');
   const maxPerTrade = parseInt(await getSetting('max_per_trade') || '250');
   const minEdge = parseInt(await getSetting('min_edge') || '3');
 
   // Calculate trade size
-  const size = Math.min(maxPerTrade, Math.round(position.value * (copyAmount / 100)));
+  let size;
+  if (useFixedSize) {
+    // Use fixed dollar amount
+    size = fixedTradeSize;
+  } else {
+    // Use percentage of source position
+    size = Math.min(maxPerTrade, Math.round(position.value * (copyAmount / 100)));
+  }
 
   // Check price edge
   const priceDiff = Math.abs(match.yes_price - position.price);
