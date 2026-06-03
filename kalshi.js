@@ -2,7 +2,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
-const KALSHI_API = process.env.KALSHI_API || 'https://trading-api.kalshi.com';
+const KALSHI_API = process.env.KALSHI_API || 'https://api.elections.kalshi.com';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
 const KALSHI_API_KEY_SECRET = process.env.KALSHI_API_KEY_SECRET;
 const DEMO_MODE = process.env.DEMO_MODE === 'true' || !KALSHI_API_KEY_SECRET;
@@ -34,10 +34,7 @@ function createKalshiClient() {
           path = urlObj.pathname + urlObj.search;
         }
         
-        // Ensure path includes /trade-api/v2 prefix
-        if (!path.startsWith('/trade-api/v2')) {
-          path = '/trade-api/v2' + path;
-        }
+        // New Kalshi API uses simpler paths without /trade-api/v2 prefix
         
         const body = config.data ? JSON.stringify(config.data) : '';
         
@@ -96,7 +93,7 @@ function debugKalshiAuth() {
   try {
     const timestampMs = Date.now().toString();
     const method = 'GET';
-    const path = '/trade-api/v2/portfolio/balance';
+    const path = '/portfolio/balance';
     const body = '';
     const signString = `${timestampMs}${method}${path}${body}`;
     
@@ -188,7 +185,7 @@ async function findMatchingMarket(position) {
       return null;
     }
 
-    const response = await client.get('/trade-api/v2/markets', {
+    const response = await client.get('/markets', {
       params: {
         limit: 20,
         status: 'open'
@@ -231,7 +228,7 @@ async function placeOrder(ticker, side, count, price) {
   try {
     const client = createKalshiClient();
     
-    const response = await client.post('/trade-api/v2/trade', {
+    const response = await client.post('/trade', {
       ticker,
       side,
       count,
@@ -254,7 +251,7 @@ async function closePosition(ticker, side, count, price) {
   try {
     const client = createKalshiClient();
     
-    const response = await client.post('/trade-api/v2/trade', {
+    const response = await client.post('/trade', {
       ticker,
       side,
       count,
