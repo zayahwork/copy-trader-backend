@@ -98,6 +98,7 @@ async function findMatchingMarket(position) {
 
     return null;
   } catch (error) {
+    console.log(`Kalshi search error for "${position.title}": ${error.message}`);
     await addActivityLog(`Kalshi search error: ${error.message}`, 'warn');
     return null;
   }
