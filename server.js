@@ -170,6 +170,37 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Test endpoint - simulate a new Ferrari trade
+app.post('/api/test-trade', async (req, res) => {
+  try {
+    const testPosition = {
+      conditionId: '0xTEST' + Date.now(),
+      title: 'Test Market: Lakers vs Warriors',
+      outcome: 'Lakers',
+      price: 0.55,
+      avgPrice: 0.55,
+      value: 100,
+      pnl: 0,
+      pnlPct: 0,
+      shares: 181,
+      category: 'NBA',
+      slug: 'test-market',
+      redeemable: false
+    };
+    
+    await addActivityLog('TEST: Simulating new Ferrari trade', 'info');
+    const result = await processNewPosition(testPosition);
+    
+    res.json({ 
+      success: true, 
+      message: 'Test trade executed - check Trade Log and Activity Log',
+      position: testPosition
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Scheduled polling job (every 5 seconds)
 cron.schedule('*/5 * * * * *', async () => {
   try {
