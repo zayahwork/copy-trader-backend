@@ -27,16 +27,18 @@ async function fetchPolymarketPositions() {
     }
 
     const positions = response.data.map(pos => ({
-      conditionId: pos.condition_id || pos.conditionId,
-      title: pos.token?.title || pos.title || 'Unknown market',
+      conditionId: pos.conditionId,
+      title: pos.title || 'Unknown market',
       outcome: pos.outcome || 'YES',
-      price: pos.price || 0,
-      value: Math.round(pos.value || 0),
-      pnl: Math.round(pos.pnl || 0),
-      pnlPct: pos.pnl_pct || ((pos.pnl / (pos.value - pos.pnl)) * 100) || 0,
-      shares: Math.round(pos.shares || 0),
-      category: pos.token?.category || pos.category || 'Other',
-      slug: pos.token?.slug || pos.slug
+      price: pos.curPrice || pos.avgPrice || 0,
+      avgPrice: pos.avgPrice || 0,
+      value: Math.round(pos.currentValue || pos.initialValue || 0),
+      pnl: Math.round(pos.cashPnl || 0),
+      pnlPct: pos.percentPnl || 0,
+      shares: Math.round(pos.size || 0),
+      category: 'Other',
+      slug: pos.slug || '',
+      redeemable: pos.redeemable || false
     }));
 
     addActivityLog(`Fetched ${positions.length} positions from Polymarket`, 'info');
