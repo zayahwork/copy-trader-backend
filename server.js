@@ -14,7 +14,7 @@ const {
   addActivityLog 
 } = require('./database');
 const { updatePositions } = require('./polymarket');
-const { processNewPosition } = require('./kalshi');
+const { processNewPosition, checkForClosedPositions } = require('./kalshi');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -128,11 +128,15 @@ app.post('/api/poll', async (req, res) => {
   try {
     await addActivityLog('Manual poll triggered', 'info');
     const newPositions = await updatePositions();
+    const currentPositions = await getPositions();
     
     // Process new positions
     for (const position of newPositions) {
       await processNewPosition(position);
     }
+    
+    // Check for positions that need to be closed
+    await checkForClosedPositions(currentPositions);
     
     res.json({ newPositions: newPositions.length });
   } catch (error) {
@@ -155,11 +159,15 @@ cron.schedule('*/30 * * * * *', async () => {
 
     await addActivityLog('Scheduled poll - checking Polymarket', 'info');
     const newPositions = await updatePositions();
+    const currentPositions = await getPositions();
     
     // Process new positions
     for (const position of newPositions) {
       await processNewPosition(position);
     }
+    
+    // Check for positions that need to be closed
+    await checkForClosedPositions(currentPositions);
   } catch (error) {
     await addActivityLog(`Poll error: ${error.message}`, 'error');
     console.error('Poll error:', error);

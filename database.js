@@ -79,6 +79,20 @@ async function initDatabase() {
       )
     `);
 
+    // Our open Kalshi positions (for auto-close)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS our_positions (
+        id SERIAL PRIMARY KEY,
+        poly_condition_id TEXT NOT NULL,
+        kalshi_ticker TEXT NOT NULL,
+        side TEXT NOT NULL,
+        count INTEGER NOT NULL,
+        entry_price REAL NOT NULL,
+        opened_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(poly_condition_id, kalshi_ticker)
+      )
+    `);
+
     // Insert default settings
     const settings = [
       { key: 'copy_amount', value: '100' },
@@ -234,6 +248,29 @@ async function getActivityLog(limit = 50) {
   return result.rows;
 }
 
+// Our positions helpers
+async function addOurPosition(polyConditionId, kalshiTicker, side, count, entryPrice) {
+  await pool.query(`
+    INSERT INTO our_positions (poly_condition_id, kalshi_ticker, side, count, entry_price)
+    VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (poly_condition_id, kalshi_ticker) DO NOTHING
+  `, [polyConditionId, kalshiTicker, side, count, entryPrice]);
+}
+
+async function getOurPositions() {
+  const result = await pool.query('SELECT * FROM our_positions');
+  return result.rows;
+}
+
+async function removeOurPosition(polyConditionId) {
+  await pool.query('DELETE FROM our_positions WHERE poly_condition_id = $1', [polyConditionId]);
+}
+
+async function getOurPosition(polyConditionId) {
+  const result = await pool.query('SELECT * FROM our_positions WHERE poly_condition_id = $1', [polyConditionId]);
+  return result.rows[0];
+}
+
 module.exports = {
   pool,
   initDatabase,
@@ -250,4 +287,8 @@ module.exports = {
   getTradeLog,
   addActivityLog,
   getActivityLog,
+  addOurPosition,
+  getOurPositions,
+  removeOurPosition,
+  getOurPosition,
 };

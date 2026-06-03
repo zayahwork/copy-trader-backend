@@ -1,5 +1,5 @@
 const axios = require('axios');
-const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch } = require('./database');
+const { upsertKalshiMatch, addActivityLog, addTradeLog, getSetting, getKalshiMatch, addOurPosition, getOurPositions, removeOurPosition, getOurPosition } = require('./database');
 
 const KALSHI_API = process.env.KALSHI_API || 'https://api.kalshi.co/v1';
 const KALSHI_API_KEY_ID = process.env.KALSHI_API_KEY_ID;
@@ -106,6 +106,29 @@ async function placeOrder(ticker, side, count, price) {
 }
 
 /**
+ * Close a position on Kalshi
+ */
+async function closePosition(ticker, side, count, price) {
+  try {
+    const client = createKalshiClient();
+    
+    const response = await client.post('/trade', {
+      ticker,
+      side,
+      count,
+      price
+    });
+
+    await addActivityLog(`Position closed: ${ticker} ${side} ${count} @ ${price}`, 'success');
+    return response.data;
+  } catch (error) {
+    await addActivityLog(`Close failed: ${error.message}`, 'error');
+    console.error('Kalshi close error:', error);
+    return null;
+  }
+}
+
+/**
  * Process a new position and attempt to copy trade
  */
 async function processNewPosition(position) {
@@ -172,9 +195,13 @@ async function executeCopyTrade(position, match) {
 
   // Place order (if API keys are configured)
   if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET) {
-    const result = await placeOrder(match.ticker, 'yes', Math.round(size / match.yes_price), match.yes_price);
+    const count = Math.round(size / match.yes_price);
+    const result = await placeOrder(match.ticker, 'yes', count, match.yes_price);
     
     if (result) {
+      // Record our position
+      await addOurPosition(position.conditionId, match.ticker, 'yes', count, match.yes_price);
+      
       await addTradeLog({
         time: new Date().toLocaleTimeString(),
         event: 'Auto-copied',
@@ -207,8 +234,66 @@ async function executeCopyTrade(position, match) {
   return null;
 }
 
+/**
+ * Check for positions that need to be closed (source trader exited)
+ */
+async function checkForClosedPositions(currentPolyPositions) {
+  const autoClose = await getSetting('auto_close') === 'true';
+  if (!autoClose) {
+    return;
+  }
+
+  const ourPositions = await getOurPositions();
+  const currentPolyIds = new Set(currentPolyPositions.map(p => p.condition_id));
+
+  for (const ourPos of ourPositions) {
+    if (!currentPolyIds.has(ourPos.poly_condition_id)) {
+      // Source trader closed this position, we should too
+      await addActivityLog(`Source trader closed position - auto-closing ${ourPos.kalshi_ticker}`, 'info');
+      
+      if (KALSHI_API_KEY_ID && KALSHI_API_KEY_SECRET) {
+        // Close on Kalshi (sell at current market price)
+        const result = await closePosition(ourPos.kalshi_ticker, 'no', ourPos.count, 1); // Sell at market
+        
+        if (result) {
+          await addTradeLog({
+            time: new Date().toLocaleTimeString(),
+            event: 'Auto-closed',
+            market: 'Position closed',
+            outcome: `${ourPos.side} → NO`,
+            polyPrice: 'N/A',
+            kalshiTicker: ourPos.kalshi_ticker,
+            size: `${ourPos.count} contracts`,
+            status: 'closed',
+            pnl: null
+          });
+        }
+      } else {
+        // Simulate close
+        await addActivityLog(`Simulated close: ${ourPos.kalshi_ticker}`, 'success');
+        await addTradeLog({
+          time: new Date().toLocaleTimeString(),
+          event: 'Auto-closed (simulated)',
+          market: 'Position closed',
+          outcome: `${ourPos.side} → NO`,
+          polyPrice: 'N/A',
+          kalshiTicker: ourPos.kalshi_ticker,
+          size: `${ourPos.count} contracts`,
+          status: 'closed',
+          pnl: null
+        });
+      }
+      
+      // Remove from our positions
+      await removeOurPosition(ourPos.poly_condition_id);
+    }
+  }
+}
+
 module.exports = {
   findMatchingMarket,
   placeOrder,
-  processNewPosition
+  closePosition,
+  processNewPosition,
+  checkForClosedPositions
 };
